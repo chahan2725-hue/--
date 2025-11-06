@@ -1,0 +1,106 @@
+<!DOCTYPE html> 
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <title>地震情報マップ</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    html, body, #map { height:100%; margin:0; padding:0; }
+    .intensity-marker {
+      display:flex;
+      justify-content:center;
+      align-items:center;
+      border-radius:50%;
+      width:24px;
+      height:24px;
+      font-weight:bold;
+      font-size:12px;
+      border:2px solid rgba(0,0,0,0.2);
+      box-sizing:border-box;
+      pointer-events:none;
+    }
+  </style>
+</head>
+<body>
+<div id="map"></div>
+<script>
+const map = L.map("map").setView([35.6812,139.7671],6);
+
+L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+  attribution: '&copy; CARTO',
+  subdomains:'abcd',
+  maxZoom:19
+}).addTo(map);
+
+// 震度カラーと表示順
+const colors = {
+  "1":"rgb(242,242,255)","2":"rgb(0,170,255)","3":"rgb(0,65,255)",
+  "4":"rgb(250,230,150)","5-":"rgb(255,230,0)","5+":"rgb(255,200,0)",
+  "6-":"rgb(255,40,0)","6+":"rgb(165,0,33)","7":"rgb(180,0,104)"
+};
+const intensityOrder = {"1":1,"2":2,"3":3,"4":4,"5-":5,"5+":6,"6-":7,"6+":8,"7":9};
+
+// 背景色に応じて文字色決定
+function getTextColor(rgb){
+  const [r,g,b] = rgb.match(/\d+/g).map(Number);
+  return (r*299 + g*587 + b*114)/1000 > 128 ? "black" : "white";
+}
+
+// マーカー追加
+function addIntensityMarker(lat, lon, intensity){
+  const color = colors[intensity] || "gray";
+  const textColor = getTextColor(color);
+  const icon = L.divIcon({
+    className:'',
+    html:`<div class="intensity-marker" style="background:${color};color:${textColor}">${intensity}</div>`,
+    iconSize:[24,24],
+    iconAnchor:[12,12]
+  });
+  const marker = L.marker([lat, lon], {icon, interactive:false, zIndexOffset:(intensityOrder[intensity]||0)*1000});
+  marker.addTo(map);
+  return marker;
+}
+
+// マーカー更新
+let markers = [];
+function updateMarkers(data){
+  markers.forEach(m => map.removeLayer(m));
+  markers = [];
+  data.forEach(p => {
+    const lat = Number(p.lat);
+    const lon = Number(p.lon);
+    const intensity = String(p.intensity);
+    if(!lat || !lon || !intensity) return;
+    const marker = addIntensityMarker(lat, lon, intensity);
+    markers.push(marker);
+  });
+  const bounds = data.map(p => [Number(p.lat), Number(p.lon)]);
+  if(bounds.length) map.fitBounds(bounds);
+}
+
+// JSON読み込み（GitHub内）
+function fetchData(){
+  const url = "data.json?ts=" + new Date().getTime(); // キャッシュ回避
+  fetch(url)
+    .then(res => res.json())
+    .then(data => updateMarkers(data))
+    .catch(err => console.error("JSON fetch error:", err));
+}
+
+// 初回取得
+fetchData();
+
+// 更新ボタン
+const btn = document.createElement("button");
+btn.textContent = "最新データ更新";
+btn.style.position = "absolute";
+btn.style.top = "10px";
+btn.style.right = "10px";
+btn.style.zIndex = 1000;
+btn.onclick = fetchData;
+document.body.appendChild(btn);
+</script>
+</body>
+</html>
